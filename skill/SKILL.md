@@ -38,9 +38,10 @@ Before answering any product/service question:
 ```
 GET /api/search?q=<customer's question>&limit=5
 ```
-- If results have score > 2.0, use them to craft your answer
+- If results are returned with positive scores, use the top results to craft your answer
+- Higher scores = more relevant; use judgment based on the number and quality of results
 - Reference the source document name for credibility
-- If no relevant results found (all scores < 1.0), flag for escalation or ask the human
+- If no relevant results found, flag for escalation or ask the human
 
 ### Step 3: Check Escalation Triggers
 Before sending any response, check if escalation is needed:

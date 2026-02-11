@@ -202,3 +202,68 @@ When a new user opens the dashboard for the first time:
 The codebase is clean and well-structured for a v1. The SKILL.md is excellent — the AI agent has good instructions. But the **dashboard is a management console with no way to experience the AI**, which means time-to-first-value requires connecting an external platform and waiting for real traffic. That's days, not minutes.
 
 **The single highest-impact change:** Add a test chat widget. Let users upload a doc, then immediately ask it a question and see the AI reference it. That turns time-to-first-value from "days" to "5 minutes."
+
+---
+
+## Fixes Applied
+
+**Date:** 2026-02-11
+
+### Critical — Must Have
+
+1. **✅ Test Chat Widget** — Added "Test AI" button on dashboard and throughout the app. Opens a modal chat where users can ask questions and see knowledge base search results in real-time. Shows chunk matches with relevance scores and explains how the AI would use them. Warns if no documents are uploaded yet.
+
+2. **✅ Getting Started Checklist** — Added onboarding card to dashboard with 5-step progress tracker: Configure company info → Upload first document → Review behavior prompts → Test a question → Connect a channel. Shows completion count, links each step to the right page, and can be dismissed.
+
+3. **✅ Channel Integration Gap Fixed** — Added `integrationNote` to every channel guide explaining these are setup guides only and webhook handling is managed by the AI agent. Added info banner at top of Channels page. Changed channel status text from "Disconnected" to "Not configured" for clarity. API key fields now use `type="password"`. Channel delete now requires confirmation.
+
+4. **✅ API Key Redaction** — `GET /api/channels` now redacts API keys and secrets in responses (shows `••••` + last 4 chars only).
+
+### High Impact
+
+5. **✅ Loading States** — Added spinner/loading indicator to every page render (Dashboard, Knowledge, Prompts, Channels, Tickets, Analytics, Settings). CSS spinner animation included.
+
+6. **✅ Replaced `prompt()` Dialogs** — Priority change now uses a proper modal with a dropdown select. Escalation now uses a modal with a textarea for the reason. No more browser `prompt()` calls.
+
+7. **✅ Client-Side Error Handling** — Rewrote `api()` function to check `res.ok`, throw on errors, and handle network failures. Every API call throughout the app is now wrapped in try/catch with toast error messages. Added global error handler in `render()` with retry button.
+
+8. **✅ File Size Validation (Client-Side)** — Added `validateFile()` that checks size (50MB max) and extension before upload. Shows friendly toast on rejection.
+
+9. **✅ Fixed `.docx` Extraction** — Removed `.docx` from supported formats entirely (was reading binary as UTF-8). Updated server fileFilter, extractText, getDocType, and client-side upload hints/accept attributes.
+
+### Medium Impact
+
+10. **✅ Improved Empty States with CTAs** — "No tickets yet" now includes a link to create one manually. "No documents" includes an upload button. Analytics shows info banner explaining data will appear after tickets flow. Ticket filter empty state suggests adjusting filters.
+
+11. **✅ Search-as-you-type** — Added debounced search (300ms) on the knowledge base search input. No longer requires pressing Enter (though Enter still works for immediate search).
+
+12. **✅ Removed Unused `marked` Dependency** — Removed from both `server.js` imports and `package.json` dependencies.
+
+13. **✅ Fixed SPA Fallback for API Routes** — Added `app.all('/api/*')` catch-all before the SPA `*` route that returns JSON 404 for unmatched API paths.
+
+14. **✅ Added Delete Confirmation for Channels** — `deleteChannel()` now shows a `confirm()` dialog before disconnecting.
+
+15. **✅ Compressed BOOTSTRAP.md** — Reduced from wall-of-text to concise format. Added important notes about pre-seeded prompts, channel integration being guide-only, test AI button, and settings priority. Removed promise of duplicate prompt creation.
+
+### Additional Fixes
+
+16. **✅ Settings Page Info Banner** — Added note explaining that company name and email are used in customer-facing messages, encouraging users to fill them in.
+
+17. **✅ Analytics Empty State** — Added info banner when no ticket data exists explaining when data will appear.
+
+18. **✅ Server-Side Ticket Validation** — Added subject validation on `POST /api/tickets` (returns 400 if empty).
+
+19. **✅ PDF Extraction Error Handling** — Changed from returning `[PDF extraction failed]` string (which got indexed as content) to throwing an error that propagates to the user.
+
+20. **✅ Multer Error Handling Middleware** — Added Express error handler for multer errors (file too large, unsupported type) with proper JSON responses.
+
+21. **✅ SKILL.md Search Threshold Fix** — Removed arbitrary BM25 score thresholds (>2.0, <1.0) that vary by corpus size. Replaced with practical guidance.
+
+22. **✅ Filter State Persistence** — Ticket filter dropdowns now reflect current filter state when re-rendered.
+
+### Not Fixed (Require Larger Architecture Changes)
+
+- **Authentication** — Needs architectural decision (token, OAuth, etc.) beyond scope of UI fixes
+- **JSON file locking** — Would need SQLite migration or write-lock implementation
+- **Rate limiting** — Needs middleware like `express-rate-limit`
+- **Webhook endpoint implementation** — By design, the AI agent handles this via SKILL.md

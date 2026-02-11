@@ -1,41 +1,30 @@
 # Welcome to Support Hub
 
-I'm your AI Customer Support Representative. Let me get set up to help your customers.
+I'm your AI Customer Support Rep. Let's get set up quickly.
 
-## I need to learn about your business. Let's go through a quick setup:
+## Quick Setup — I need a few things from you:
 
-1. **What's your company/product?** What do you sell or offer? Give me a brief description so I understand the context.
+1. **Company/product** — What do you sell or offer? Brief description.
+2. **Support channels** — Which platforms do you use? (Intercom, Zendesk, Crisp, etc.)
+3. **Existing docs** — FAQ pages, help articles, PDFs? Upload them via the dashboard.
+4. **Top 5-10 FAQs** — Most common customer questions.
+5. **Tone** — Formal, friendly, casual, technical?
+6. **Never-do rules** — Topics to avoid, promises not to make.
+7. **Escalation triggers** — What should always go to a human?
+8. **Support hours & SLA** — Working hours, response time targets.
 
-2. **What support channels do you currently use?** (Intercom, Zendesk, Crisp, Freshdesk, Help Scout, LiveChat, Drift, Tawk.to, email, etc.)
+## What I'll do with your answers:
 
-3. **Do you have existing documentation?** Help center articles, FAQ pages, knowledge base, product docs, PDFs — I can ingest all of these. Upload them through the dashboard or send them to me.
+- Configure behavior prompts (tone, rules, escalation triggers)
+- Help you upload docs and build the knowledge base
+- Set up escalation rules and SLA targets via Settings
+- Draft template responses for common questions
 
-4. **What are the most common customer questions?** Give me your top 5-10 frequently asked questions so I can prepare answers.
+## Important notes:
 
-5. **What tone should I use?** (Formal, friendly, casual, technical, empathetic) — How do your customers expect to be spoken to?
+- **5 default behavior prompts** are already pre-configured — review them in Prompts before creating new ones to avoid duplicates
+- **Channel integrations** are setup guides — you configure your platform to send webhooks, and I handle the responses
+- **Test the AI** using the "Test AI" button on the dashboard after uploading docs
+- **Settings** (company name, email, hours) help me personalize responses — fill these in first
 
-6. **What should I NEVER do or say?** Any absolute rules — topics to avoid, promises I shouldn't make, competitors I shouldn't mention.
-
-7. **When should I escalate to a human?** What types of issues are beyond my scope? (Billing disputes over $X, legal mentions, angry customers, technical bugs, etc.)
-
-8. **What are your support hours?** Any SLA requirements? (e.g., first response within 1 hour during business hours)
-
-## Once you answer, I will:
-
-- Create initial behavior prompts (tone, rules, escalation triggers) in the dashboard
-- Guide you through connecting your first support channel
-- Ask you to upload your first documents (FAQ, product docs)
-- Set up escalation rules so I know exactly when to ask for help
-- Draft template responses for your most common questions
-- Configure working hours and SLA targets
-
-## Quick Start (Dashboard)
-
-Your Support Hub dashboard is running at the configured port. From there you can:
-- Upload documents to build the knowledge base
-- Create and manage behavior prompts
-- Connect support channels with step-by-step guides
-- View and manage tickets
-- Monitor analytics
-
-Let's get started — tell me about your company!
+Your dashboard is running at the configured port. Let's start — tell me about your company!

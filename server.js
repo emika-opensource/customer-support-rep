@@ -3,7 +3,6 @@ const cors = require('cors');
 const fs = require('fs-extra');
 const path = require('path');
 const multer = require('multer');
-const { marked } = require('marked');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -22,11 +21,24 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Multer config
+const ALLOWED_EXTENSIONS = ['.pdf', '.md', '.txt', '.html', '.htm'];
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
 const storage = multer.diskStorage({
   destination: path.join(DATA_DIR, 'uploads'),
   filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
 });
-const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
+const upload = multer({ 
+  storage, 
+  limits: { fileSize: MAX_FILE_SIZE },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ALLOWED_EXTENSIONS.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Unsupported file type: ${ext}. Supported: ${ALLOWED_EXTENSIONS.join(', ')}`));
+    }
+  }
+});
 
 // ============ Data helpers ============
 function loadJSON(name, fallback = []) {
@@ -67,7 +79,6 @@ function bm25Search(query, chunks, limit = 5) {
   const avgDl = chunks.reduce((s, c) => s + tokenize(c.content).length, 0) / (N || 1);
   const k1 = 1.5, b = 0.75;
   
-  // Document frequency
   const df = {};
   chunks.forEach(chunk => {
     const unique = new Set(tokenize(chunk.content));
@@ -104,13 +115,16 @@ async function extractText(filePath, mimetype, originalname) {
       const pdfParse = require('pdf-parse');
       const buf = await fs.readFile(filePath);
       const data = await pdfParse(buf);
+      if (!data.text || !data.text.trim()) {
+        throw new Error('PDF contained no extractable text');
+      }
       return data.text;
     } catch (e) {
-      return `[PDF extraction failed: ${e.message}]`;
+      throw new Error(`PDF extraction failed: ${e.message}`);
     }
   }
   
-  if (['.md', '.txt', '.html', '.htm', '.docx'].includes(ext)) {
+  if (['.md', '.txt', '.html', '.htm'].includes(ext)) {
     return await fs.readFile(filePath, 'utf-8');
   }
   
@@ -138,13 +152,12 @@ function chunkText(text, chunkSize = 500) {
 
 function getDocType(filename) {
   const ext = path.extname(filename).toLowerCase();
-  const map = { '.pdf': 'pdf', '.md': 'markdown', '.txt': 'text', '.html': 'html', '.htm': 'html', '.docx': 'docx' };
+  const map = { '.pdf': 'pdf', '.md': 'markdown', '.txt': 'text', '.html': 'html', '.htm': 'html' };
   return map[ext] || 'text';
 }
 
 // ============ Initialize defaults ============
 function initDefaults() {
-  // Default prompts
   if (!loadJSON('prompts.json').length) {
     saveJSON('prompts.json', [
       { id: genId(), name: 'Friendly and Professional Tone', type: 'tone', content: 'Always maintain a friendly, warm, and professional tone. Use the customer\'s name when available. Be empathetic and understanding. Avoid jargon unless the customer uses it first. Keep responses concise but thorough.', enabled: true, priority: 1, createdAt: new Date().toISOString() },
@@ -155,7 +168,6 @@ function initDefaults() {
     ]);
   }
   
-  // Default config
   const cfg = loadJSON('config.json', null);
   if (!cfg) {
     saveJSON('config.json', {
@@ -164,7 +176,8 @@ function initDefaults() {
       workingHours: { start: '09:00', end: '17:00', timezone: 'UTC' },
       escalationThreshold: 70,
       autoGreet: true,
-      slaTargetMinutes: 60
+      slaTargetMinutes: 60,
+      onboardingComplete: false
     });
   }
 }
@@ -180,7 +193,6 @@ app.get('/api/documents/:id', (req, res) => {
   const doc = docs.find(d => d.id === req.params.id);
   if (!doc) return res.status(404).json({ error: 'Not found' });
   
-  // Include content
   const chunks = loadJSON('knowledge-chunks.json').filter(c => c.documentId === doc.id);
   const content = chunks.sort((a, b) => a.position - b.position).map(c => c.content).join('\n\n');
   res.json({ ...doc, content });
@@ -215,7 +227,6 @@ app.post('/api/documents', upload.single('file'), async (req, res) => {
     docs.push(doc);
     saveJSON('documents.json', docs);
     
-    // Save chunks with keywords
     const allChunks = loadJSON('knowledge-chunks.json');
     textChunks.forEach(chunk => {
       allChunks.push({
@@ -301,7 +312,18 @@ app.delete('/api/prompts/:id', (req, res) => {
 });
 
 // ============ ROUTES: Channels ============
-app.get('/api/channels', (req, res) => res.json(loadJSON('channels.json')));
+app.get('/api/channels', (req, res) => {
+  // Redact API keys from response
+  const channels = loadJSON('channels.json').map(c => ({
+    ...c,
+    config: c.config ? {
+      ...c.config,
+      apiKey: c.config.apiKey ? '••••' + c.config.apiKey.slice(-4) : '',
+      secret: c.config.secret ? '••••' + c.config.secret.slice(-4) : ''
+    } : {}
+  }));
+  res.json(channels);
+});
 
 app.get('/api/channels/guides', (req, res) => {
   res.json([
@@ -320,7 +342,8 @@ app.get('/api/channels/guides', (req, res) => {
       webhookConfig: { url: '/webhooks/intercom', events: ['conversation.created', 'conversation.user.replied', 'conversation.admin.replied', 'conversation.admin.closed'], secret: 'Required' },
       apiEndpoints: ['https://api.intercom.io/conversations', 'https://api.intercom.io/conversations/{id}/reply', 'https://api.intercom.io/contacts'],
       authType: 'Bearer Token',
-      features: ['Live Chat', 'Chatbots', 'Help Center', 'Product Tours', 'Custom Bots']
+      features: ['Live Chat', 'Chatbots', 'Help Center', 'Product Tours', 'Custom Bots'],
+      integrationNote: 'This is a setup guide only. The AI agent handles webhook processing and responses — configure your platform to send webhooks to this URL, and the AI will process incoming conversations automatically.'
     },
     {
       platform: 'zendesk', name: 'Zendesk', description: 'Enterprise customer service and engagement platform with ticketing, chat, and knowledge base.',
@@ -337,7 +360,8 @@ app.get('/api/channels/guides', (req, res) => {
       webhookConfig: { url: '/webhooks/zendesk', events: ['ticket.created', 'ticket.updated', 'comment.added'], secret: 'Required' },
       apiEndpoints: ['https://{subdomain}.zendesk.com/api/v2/tickets', 'https://{subdomain}.zendesk.com/api/v2/tickets/{id}/comments', 'https://{subdomain}.zendesk.com/api/v2/users'],
       authType: 'API Token (email/token)',
-      features: ['Ticketing', 'Live Chat', 'Knowledge Base', 'Community Forums', 'Automations']
+      features: ['Ticketing', 'Live Chat', 'Knowledge Base', 'Community Forums', 'Automations'],
+      integrationNote: 'This is a setup guide only. The AI agent handles webhook processing and responses — configure your platform to send webhooks to this URL, and the AI will process incoming conversations automatically.'
     },
     {
       platform: 'crisp', name: 'Crisp', description: 'All-in-one business messaging platform with live chat, chatbot, and CRM.',
@@ -354,7 +378,8 @@ app.get('/api/channels/guides', (req, res) => {
       webhookConfig: { url: '/webhooks/crisp', events: ['message:send', 'message:received', 'session:set_data', 'session:removed'], secret: 'Token pair' },
       apiEndpoints: ['https://api.crisp.chat/v1/website/{website_id}/conversation', 'https://api.crisp.chat/v1/website/{website_id}/conversation/{session_id}/message', 'https://api.crisp.chat/v1/website/{website_id}/conversation/{session_id}/meta'],
       authType: 'Token ID + Token Key (Basic Auth)',
-      features: ['Live Chat', 'Chatbot', 'CRM', 'Knowledge Base', 'Status Page']
+      features: ['Live Chat', 'Chatbot', 'CRM', 'Knowledge Base', 'Status Page'],
+      integrationNote: 'This is a setup guide only. The AI agent handles webhook processing and responses — configure your platform to send webhooks to this URL, and the AI will process incoming conversations automatically.'
     },
     {
       platform: 'freshdesk', name: 'Freshdesk', description: 'Cloud-based customer support software with ticketing, automations, and self-service portal.',
@@ -370,7 +395,8 @@ app.get('/api/channels/guides', (req, res) => {
       webhookConfig: { url: '/webhooks/freshdesk', events: ['ticket.created', 'ticket.updated', 'note.added'], secret: 'API Key' },
       apiEndpoints: ['https://{domain}.freshdesk.com/api/v2/tickets', 'https://{domain}.freshdesk.com/api/v2/tickets/{id}/reply', 'https://{domain}.freshdesk.com/api/v2/tickets/{id}/notes'],
       authType: 'API Key (Basic Auth)',
-      features: ['Ticketing', 'Automations', 'Self-Service Portal', 'SLA Management', 'Canned Responses']
+      features: ['Ticketing', 'Automations', 'Self-Service Portal', 'SLA Management', 'Canned Responses'],
+      integrationNote: 'This is a setup guide only. The AI agent handles webhook processing and responses — configure your platform to send webhooks to this URL, and the AI will process incoming conversations automatically.'
     },
     {
       platform: 'helpscout', name: 'Help Scout', description: 'Customer service platform focused on email-based support with shared inboxes and docs.',
@@ -387,7 +413,8 @@ app.get('/api/channels/guides', (req, res) => {
       webhookConfig: { url: '/webhooks/helpscout', events: ['convo.created', 'convo.customer.reply.created', 'convo.agent.reply.created', 'convo.assigned'], secret: 'Webhook secret' },
       apiEndpoints: ['https://api.helpscout.net/v2/conversations', 'https://api.helpscout.net/v2/conversations/{id}/threads', 'https://api.helpscout.net/v2/customers'],
       authType: 'API Key or OAuth2',
-      features: ['Shared Inbox', 'Knowledge Base (Docs)', 'Customer Profiles', 'Workflows', 'Reporting']
+      features: ['Shared Inbox', 'Knowledge Base (Docs)', 'Customer Profiles', 'Workflows', 'Reporting'],
+      integrationNote: 'This is a setup guide only. The AI agent handles webhook processing and responses — configure your platform to send webhooks to this URL, and the AI will process incoming conversations automatically.'
     },
     {
       platform: 'livechat', name: 'LiveChat', description: 'Live chat and help desk software for online sales and customer support.',
@@ -404,7 +431,8 @@ app.get('/api/channels/guides', (req, res) => {
       webhookConfig: { url: '/webhooks/livechat', events: ['incoming_chat', 'incoming_event', 'chat_deactivated', 'agent_added'], secret: 'Client Secret' },
       apiEndpoints: ['https://api.livechatinc.com/v3.5/agent/action/send_event', 'https://api.livechatinc.com/v3.5/agent/action/transfer_chat', 'https://api.livechatinc.com/v3.5/agent/action/list_chats'],
       authType: 'Personal Access Token or OAuth2',
-      features: ['Live Chat', 'Bot Agents', 'Ticketing', 'Chat Transfers', 'Canned Responses']
+      features: ['Live Chat', 'Bot Agents', 'Ticketing', 'Chat Transfers', 'Canned Responses'],
+      integrationNote: 'This is a setup guide only. The AI agent handles webhook processing and responses — configure your platform to send webhooks to this URL, and the AI will process incoming conversations automatically.'
     },
     {
       platform: 'drift', name: 'Drift', description: 'Conversational marketing and sales platform with chatbots, live chat, and meetings.',
@@ -421,7 +449,8 @@ app.get('/api/channels/guides', (req, res) => {
       webhookConfig: { url: '/webhooks/drift', events: ['new_message', 'new_conversation', 'conversation_status_updated', 'contact_identified'], secret: 'Verification token' },
       apiEndpoints: ['https://driftapi.com/conversations', 'https://driftapi.com/conversations/{id}/messages', 'https://driftapi.com/contacts'],
       authType: 'OAuth2 Bearer Token',
-      features: ['Live Chat', 'Chatbots', 'Playbooks', 'Meeting Scheduling', 'Account-Based Marketing']
+      features: ['Live Chat', 'Chatbots', 'Playbooks', 'Meeting Scheduling', 'Account-Based Marketing'],
+      integrationNote: 'This is a setup guide only. The AI agent handles webhook processing and responses — configure your platform to send webhooks to this URL, and the AI will process incoming conversations automatically.'
     },
     {
       platform: 'tawk', name: 'Tawk.to', description: 'Free live chat and customer communication platform with ticketing and knowledge base.',
@@ -438,7 +467,8 @@ app.get('/api/channels/guides', (req, res) => {
       webhookConfig: { url: '/webhooks/tawk', events: ['chat:start', 'chat:end', 'ticket:create', 'chat:transcript'], secret: 'None (IP whitelist recommended)' },
       apiEndpoints: ['https://api.tawk.to/v3/property/{propertyId}/chat', 'https://api.tawk.to/v3/property/{propertyId}/ticket', 'https://api.tawk.to/v3/property/{propertyId}/visitor'],
       authType: 'REST API Key',
-      features: ['Live Chat', 'Ticketing', 'Knowledge Base', 'Video + Voice Chat', 'Visitor Monitoring']
+      features: ['Live Chat', 'Ticketing', 'Knowledge Base', 'Video + Voice Chat', 'Visitor Monitoring'],
+      integrationNote: 'This is a setup guide only. The AI agent handles webhook processing and responses — configure your platform to send webhooks to this URL, and the AI will process incoming conversations automatically.'
     }
   ]);
 });
@@ -490,6 +520,9 @@ app.get('/api/tickets/:id', (req, res) => {
 });
 
 app.post('/api/tickets', (req, res) => {
+  if (!req.body.subject || !req.body.subject.trim()) {
+    return res.status(400).json({ error: 'Subject is required' });
+  }
   const tickets = loadJSON('tickets.json');
   const ticket = {
     id: genId(),
@@ -498,7 +531,7 @@ app.post('/api/tickets', (req, res) => {
     externalId: req.body.externalId || null,
     customerName: req.body.customerName || 'Unknown',
     customerEmail: req.body.customerEmail || '',
-    subject: req.body.subject || 'New Ticket',
+    subject: req.body.subject.trim(),
     messages: req.body.messages || [],
     status: 'open',
     priority: req.body.priority || 'medium',
@@ -590,9 +623,28 @@ app.get('/api/analytics', (req, res) => {
   });
 });
 
-// SPA fallback
+// API 404 handler — must be after all API routes
+app.all('/api/*', (req, res) => {
+  res.status(404).json({ error: 'API endpoint not found' });
+});
+
+// SPA fallback — only for non-API routes
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'File too large. Maximum size is 50MB.' });
+    }
+    return res.status(400).json({ error: err.message });
+  }
+  if (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  next();
 });
 
 app.listen(PORT, () => console.log(`Support Hub running on port ${PORT}`));
