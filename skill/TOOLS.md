@@ -58,3 +58,23 @@ Platforms: `intercom`, `zendesk`, `crisp`, `freshdesk`, `helpscout`, `livechat`,
 | GET | `/api/config` | Get settings |
 | PUT | `/api/config` | Update settings |
 | GET | `/api/analytics` | Get support stats |
+
+
+## Browser & Screenshots (Playwright)
+
+Playwright and Chromium are pre-installed. Use them for browsing websites, taking screenshots, scraping content, and testing.
+
+```bash
+# Quick screenshot
+npx playwright screenshot --full-page https://example.com screenshot.png
+
+# In Node.js
+const { chromium } = require("playwright");
+const browser = await chromium.launch();
+const page = await browser.newPage();
+await page.goto("https://example.com");
+await page.screenshot({ path: "screenshot.png", fullPage: true });
+await browser.close();
+```
+
+Do NOT install Puppeteer or download Chromium — Playwright is already here and ready to use.
